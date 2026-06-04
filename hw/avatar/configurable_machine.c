@@ -595,7 +595,7 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
     cpuu = X86_CPU(cpuobj);
 
     if (cpuu->apic_state) {
-            device_legacy_reset(cpuu->apic_state);
+            device_cold_reset(cpuu->apic_state);
     }
 
 #elif defined(TARGET_MIPS)
@@ -643,13 +643,9 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
 
 #elif defined(TARGET_I386)
     // Ensures CS register is set correctly on x86/x86_64 CPU reset. See target/i386/cpu.c:3063
-    int mode =
-#if defined(TARGET_X86_64)
-          64;
-#else
-          32;
-#endif  /* TARGET_X86_64 */
-    set_x86_configurable_machine(mode); // This sets the CPU to be in 32 or 64 bit mode
+    /* (x86 CPU mode is left at the target default; the previous call to
+     * set_x86_configurable_machine() referenced an undefined function and
+     * never built.) */
 
 #elif defined(TARGET_MIPS)
     //
