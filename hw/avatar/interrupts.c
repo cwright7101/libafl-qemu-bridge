@@ -29,16 +29,11 @@ static uint8_t ignore_irq_return_map[32] = {0};
 
 static bool armv7m_exception_handling_enabled = false;
 
-void qmp_avatar_armv7m_ignore_irq_return(int64_t num_irq, Error **errp);
-void qmp_avatar_armv7m_set_vector_table_base(int64_t num_cpu, int64_t base, Error **errp);
-void qmp_avatar_armv7m_enable_irq(const char *irq_rx_queue_name,
-                                  const char *irq_tx_queue_name,
-                                  const char *rmem_rx_queue_name,
-                                  const char *rmem_tx_queue_name, Error **errp);
-void qmp_avatar_armv7m_unignore_irq_return(int64_t num_irq, Error **errp);
-void qmp_avatar_armv7m_inject_irq(int64_t num_cpu,int64_t num_irq, Error **errp);
-void qmp_avatar_armv7m_disable_irq(Error **errp);
-
+/* The qmp_avatar_armv7m_* prototypes come from the generated
+ * qapi-commands-avatar-target.h now that the commands are guarded by
+ * TARGET_ARM (visible to the qapi build) rather than the device-only
+ * CONFIG_AVATAR (which the generated header never saw). The manual
+ * forward declarations that used to live here are therefore redundant. */
 
 void qmp_avatar_armv7m_set_vector_table_base(int64_t num_cpu, int64_t base, Error **errp)
 {
