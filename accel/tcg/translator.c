@@ -190,6 +190,20 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
         libafl_qemu_breakpoint_run(libafl_gen_cur_pc);
 
         // 0x0f, 0x3a, 0xf2, 0x44
+        // The speculative backdoor peek below reads ahead with
+        // translator_ldub, which appends the peeked bytes to the per-TB
+        // instruction record buffer (record_save). When the magic sequence
+        // is NOT present, those recorded bytes pollute record_start/len, and
+        // the real decoder's own (possibly wider/overlapping) reads then look
+        // non-contiguous and trip the record_save() assertion on code fetched
+        // through the instrumented (non-host-backed) path — e.g. i386. Save
+        // the record-buffer state and restore it on the no-match path so the
+        // decoder records its reads exactly as upstream expects. When the
+        // backdoor IS matched the 4 bytes are consumed as the instruction, so
+        // we keep them recorded (contiguity for the next insn).
+        int saved_record_start = db->record_start;
+        int saved_record_len = db->record_len;
+        bool backdoor_keep_record = false;
         uint8_t backdoor = translator_ldub(cpu_env(cpu), db, db->pc_next);
         if (backdoor == 0x0f) {
             backdoor = translator_ldub(cpu_env(cpu), db, db->pc_next +1);
@@ -205,6 +219,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
                     } else if (backdoor == 0x66) {
                         // First update pc_next to restart at next instruction
                         db->pc_next += 4;
+                        backdoor_keep_record = true;
 
                         TCGv_i64 tmp0 = tcg_constant_i64((uint64_t)db->pc_next);
                         gen_helper_libafl_qemu_handle_custom_insn(tcg_env, tmp0, tcg_constant_i32(LIBAFL_CUSTOM_INSN_LIBAFL));
@@ -212,6 +227,10 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
                     }
                 }
             }
+        }
+        if (!backdoor_keep_record) {
+            db->record_start = saved_record_start;
+            db->record_len = saved_record_len;
         }
 
         //// --- End LibAFL code ---
