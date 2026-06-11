@@ -2556,6 +2556,10 @@ void cpu_x86_update_cr3(CPUX86State *env, target_ulong new_cr3);
 void cpu_x86_update_cr4(CPUX86State *env, uint32_t new_cr4);
 void cpu_x86_update_dr7(CPUX86State *env, uint32_t new_dr7);
 
+/* hw/avatar configurable machine: select flat 32/64-bit mode so the CPU
+ * reset starts in protected mode instead of the real-mode defaults. */
+void set_x86_configurable_machine(int mode);
+
 /* hw/pc.c */
 uint64_t cpu_get_tsc(CPUX86State *env);
 

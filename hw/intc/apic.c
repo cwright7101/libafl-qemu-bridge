@@ -287,9 +287,9 @@ static void apic_bus_deliver(const uint32_t *deliver_bitmask,
                  apic_set_irq(apic_iter, vector_num, trigger_mode) );
 }
 
-static void apic_deliver_irq(uint32_t dest, uint8_t dest_mode,
-                             uint8_t delivery_mode, uint8_t vector_num,
-                             uint8_t trigger_mode)
+void apic_deliver_irq(uint32_t dest, uint8_t dest_mode,
+                      uint8_t delivery_mode, uint8_t vector_num,
+                      uint8_t trigger_mode)
 {
     g_autofree uint32_t *deliver_bitmask = g_new(uint32_t, max_apic_words);
 
