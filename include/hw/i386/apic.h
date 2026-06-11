@@ -4,6 +4,10 @@
 
 /* apic.c */
 void apic_set_max_apic_id(uint32_t max_apic_id);
+/* Deliver an interrupt to a local APIC (used by hw/avatar hal-x86-inject-irq
+ * to inject a fixed vector). Exported from apic.c. */
+void apic_deliver_irq(uint32_t dest, uint8_t dest_mode, uint8_t delivery_mode,
+                      uint8_t vector_num, uint8_t trigger_mode);
 int apic_accept_pic_intr(DeviceState *s);
 void apic_deliver_pic_intr(DeviceState *s, int level);
 void apic_deliver_nmi(DeviceState *d);

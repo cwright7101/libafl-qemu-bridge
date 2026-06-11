@@ -7465,6 +7465,14 @@ static bool cpuid_has_xsave_feature(CPUX86State *env, const ExtSaveArea *esa)
     return false;
 }
 
+/* hw/avatar configurable machine: 0 = normal (real-mode reset), 32 = flat
+ * 32-bit protected mode, 64 = flat 64-bit mode. Set before the CPU is
+ * realized so the reset below sees it. */
+static int x86_configurable_machine_mode = 0;
+void set_x86_configurable_machine(int mode) {
+    x86_configurable_machine_mode = mode;
+}
+
 static void x86_cpu_reset_hold(Object *obj, ResetType type)
 {
     CPUState *cs = CPU(obj);
@@ -7505,24 +7513,53 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
     env->tr.limit = 0xffff;
     env->tr.flags = DESC_P_MASK | (11 << DESC_TYPE_SHIFT);
 
-    cpu_x86_load_seg_cache(env, R_CS, 0xf000, 0xffff0000, 0xffff,
+    /* Default values for starting a system in real mode. The hw/avatar
+     * configurable machine instead runs flat with 4 GiB segment limits
+     * ("unicorn-style") so firmware can execute anywhere and reach high
+     * MMIO (e.g. the LAPIC at 0xFEE00000) without installing its own GDT. */
+    unsigned int cs_selector = 0xf000;
+    target_ulong cs_base = 0xffff0000;
+    target_ulong cm_limit = 0xffff;
+    if (x86_configurable_machine_mode != 0) {
+        cs_selector = 0;
+        cs_base = 0;
+        cm_limit = 0xffffffff;
+    }
+
+    cpu_x86_load_seg_cache(env, R_CS, cs_selector, cs_base, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_CS_MASK |
                            DESC_R_MASK | DESC_A_MASK);
-    cpu_x86_load_seg_cache(env, R_DS, 0, 0, 0xffff,
+    cpu_x86_load_seg_cache(env, R_DS, 0, 0, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
                            DESC_A_MASK);
-    cpu_x86_load_seg_cache(env, R_ES, 0, 0, 0xffff,
+    cpu_x86_load_seg_cache(env, R_ES, 0, 0, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
                            DESC_A_MASK);
-    cpu_x86_load_seg_cache(env, R_SS, 0, 0, 0xffff,
+    cpu_x86_load_seg_cache(env, R_SS, 0, 0, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
                            DESC_A_MASK);
-    cpu_x86_load_seg_cache(env, R_FS, 0, 0, 0xffff,
+    cpu_x86_load_seg_cache(env, R_FS, 0, 0, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
                            DESC_A_MASK);
-    cpu_x86_load_seg_cache(env, R_GS, 0, 0, 0xffff,
+    cpu_x86_load_seg_cache(env, R_GS, 0, 0, cm_limit,
                            DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
                            DESC_A_MASK);
+
+    if (x86_configurable_machine_mode == 32) {
+        /* Enter 32-bit protected mode (flat, no paging). The firmware relies
+         * on protected-mode semantics: a GDT far jump (ljmp $0x08) and
+         * IDT-based interrupt delivery. With CR0.PE=0 the far jump is treated
+         * as a real-mode segment load (CS base = sel<<4) and execution
+         * derails, and injected vectors dispatch through the real-mode IVT
+         * instead of the firmware's IDT. The remaining reset state is left
+         * at 0/undefined, unicorn-style; the entry point is set afterwards. */
+        cpu_x86_update_cr0(env, env->cr[0] | CR0_PE_MASK);
+        env->hflags |= HF_CS32_MASK | HF_SS32_MASK;
+        return;
+    } else if (x86_configurable_machine_mode == 64) {
+        env->hflags |= HF_CS64_MASK;
+        return;
+    }
 
     env->eip = 0xfff0;
     env->regs[R_EDX] = env->cpuid_version;

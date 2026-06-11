@@ -509,7 +509,7 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
     int num_irq = 64;
 
 #elif defined(TARGET_I386)
-    //
+    Error *err = NULL;
 
 #elif defined(TARGET_MIPS)
     Error *err = NULL;
@@ -585,6 +585,20 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
 #endif  /* ! TARGET_AARCH64 */
     printf("Got HERE %s, %s:%i\n",__PRETTY_FUNCTION__, __FILE__, __LINE__);
 #elif defined(TARGET_I386)
+    /* Select flat 32/64-bit mode BEFORE the CPU is realized. The X86CPU
+     * reset (triggered by qdev_realize below) reads
+     * x86_configurable_machine_mode to install flat protected-mode
+     * segments; setting it only afterwards leaves the CPU in its
+     * real-mode reset state (CS base 0xffff0000), so execution at the
+     * configured entry address fetches from the wrong linear address and
+     * the firmware never runs. */
+    set_x86_configurable_machine(
+#if defined(TARGET_X86_64)
+        64
+#else
+        32
+#endif
+    );
     cpu_oc = cpu_class_by_name(TYPE_X86_CPU, cpu_type);
     if (!cpu_oc) {
         error_printf("Unable to find CPU definition\n");
@@ -596,6 +610,18 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
 
     if (cpuu->apic_state) {
             device_cold_reset(cpuu->apic_state);
+    }
+
+    if (!object_property_set_uint(OBJECT(cpuu), "apic-id", 0, &err)) {
+        error_report_err(err);
+        object_unref(OBJECT(cpuu));
+        exit(EXIT_FAILURE);
+    }
+
+    if (!qdev_realize(DEVICE(cpuu), NULL, &err)) {
+        error_report_err(err);
+        object_unref(OBJECT(cpuu));
+        exit(EXIT_FAILURE);
     }
 
 #elif defined(TARGET_MIPS)
@@ -642,10 +668,17 @@ static THISCPU *create_cpu(MachineState * ms, QDict *conf)
 #endif  /* TARGET_AARCH64 */
 
 #elif defined(TARGET_I386)
-    // Ensures CS register is set correctly on x86/x86_64 CPU reset. See target/i386/cpu.c:3063
-    /* (x86 CPU mode is left at the target default; the previous call to
-     * set_x86_configurable_machine() referenced an undefined function and
-     * never built.) */
+    /* Ensures the CPU is in 32/64-bit flat protected mode on reset. This is
+     * also set before realize above (so the realize-time reset sees it);
+     * re-asserting here is harmless and keeps the mode correct across any
+     * later reset. */
+    set_x86_configurable_machine(
+#if defined(TARGET_X86_64)
+        64
+#else
+        32
+#endif
+    );
 
 #elif defined(TARGET_MIPS)
     //
@@ -790,8 +823,12 @@ static void configurable_machine_class_init(ObjectClass *oc, void *data)
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("arm926");;
 #elif defined(TARGET_AARCH64)
     mc->default_cpu_type = "cortex-a57";
-#elif defined(TARGET_I386)
-    mc->default_cpu_type = "qemu32";
+#elif defined(TARGET_I386) || defined(TARGET_X86_64)
+    /* Use the fully-qualified type name (e.g. "qemu32-i386-cpu"), not the
+     * "qemu32" alias: QEMU 10/11's generic is_cpu_type_supported() validates
+     * machine->cpu_type via object_class_by_name(), which only resolves real
+     * registered class names, not machine-configured aliases. */
+    mc->default_cpu_type = TARGET_DEFAULT_CPU_TYPE;
 #elif defined(TARGET_MIPS)
     mc->default_cpu_type = "24Kf";
     //mc->default_cpu_type = "mips32r6-generic";
