@@ -213,3 +213,67 @@ void qmp_hal_x86_inject_irq(int64_t num_cpu, int64_t num_irq, Error **errp)
     error_setg(errp, "hal-x86-inject-irq: not an x86 target");
 #endif
 }
+
+/* ------------------------------------------------------------------------
+ * libafl-qemu syx-snapshot: fast whole-machine checkpoint for fuzzing,
+ * driven over QMP by HALucinator's LibAflQemuBackend.
+ *
+ * syx-snapshot has no QMP/HMP surface upstream (it is driven from the
+ * embedded LibAFL Rust harness); these two commands expose it. We restore
+ * the FULL baseline (syx_snapshot_root_restore_full) rather than the dirty
+ * list, so the restore is correct without the harness's TCG instrumentation.
+ * ------------------------------------------------------------------------ */
+#include "libafl/syx-snapshot/syx-snapshot.h"
+#if __has_include("system/runstate.h")
+#include "system/runstate.h"        /* QEMU 11+ */
+#else
+#include "sysemu/runstate.h"        /* QEMU 10.x / 6.2 */
+#endif
+
+static SyxSnapshot* hal_syx_snapshot;
+static bool hal_syx_inited;
+
+void qmp_libafl_syx_snapshot(Error **errp)
+{
+    /* Only touch the runstate if the guest is actually running; when
+     * HALucinator calls this the CPU is halted at a GDB stop, so pausing
+     * would be an invalid runstate transition. */
+    bool was_running = runstate_is_running();
+
+    if (was_running) {
+        vm_stop(RUN_STATE_PAUSED);
+    }
+    if (!hal_syx_inited) {
+        syx_snapshot_init(false);   /* diskless machine: no bdrv cache */
+        hal_syx_inited = true;
+    }
+    if (hal_syx_snapshot) {
+        syx_snapshot_free(hal_syx_snapshot);
+        hal_syx_snapshot = NULL;
+    }
+    /* track=false: we reload the full baseline on restore, so per-write
+     * dirty tracking is not needed for correctness. */
+    hal_syx_snapshot =
+        syx_snapshot_new(false, false, DEVICE_SNAPSHOT_ALL, NULL);
+    if (was_running) {
+        vm_start();
+    }
+}
+
+void qmp_libafl_syx_restore(Error **errp)
+{
+    bool was_running;
+
+    if (!hal_syx_snapshot) {
+        error_setg(errp, "libafl-syx-restore: no snapshot has been taken");
+        return;
+    }
+    was_running = runstate_is_running();
+    if (was_running) {
+        vm_stop(RUN_STATE_RESTORE_VM);
+    }
+    syx_snapshot_root_restore_full(hal_syx_snapshot);
+    if (was_running) {
+        vm_start();
+    }
+}

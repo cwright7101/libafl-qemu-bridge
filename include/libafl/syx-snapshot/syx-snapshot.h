@@ -75,6 +75,10 @@ void syx_snapshot_free(SyxSnapshot* snapshot);
 
 void syx_snapshot_root_restore(SyxSnapshot* snapshot);
 
+// HALucinator: full-baseline restore (RAM + devices), independent of the
+// dirty list -- used to drive a correct snapshot/restore loop over QMP.
+void syx_snapshot_root_restore_full(SyxSnapshot* snapshot);
+
 SyxSnapshotCheckResult syx_snapshot_check(SyxSnapshot* ref_snapshot);
 
 // Push the current RAM state and saves it

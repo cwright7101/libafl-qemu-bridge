@@ -741,6 +741,53 @@ void syx_snapshot_root_restore(SyxSnapshot* snapshot)
     }
 }
 
+// HALucinator addition: guaranteed-complete restore.
+//
+// syx_snapshot_root_restore() above reverts only the pages recorded in the
+// dirty list. That list is fed by the softmmu slow path only (the fast-path
+// tcg-target hook is disabled), so outside the LibAFL Rust harness it can
+// under-approximate and silently leave modified pages un-reverted. For a
+// correct QMP-driven fuzzing loop we instead reload the FULL RAM baseline
+// that syx_snapshot_root_new() captured, plus the full device state. It is an
+// in-process memcpy of each RAMBlock -- still far faster than reading all of
+// guest RAM back over the GDB stub, and it cannot under-restore.
+void syx_snapshot_root_restore_full(SyxSnapshot* snapshot)
+{
+    bool must_unlock_bql = false;
+    RAMBlock* block;
+
+    if (!bql_locked()) {
+        bql_lock();
+        must_unlock_bql = true;
+    }
+
+    // Restore all non-RAM device / vmstate first (memory layout may change).
+    device_restore_all(snapshot->root_snapshot->dss);
+
+    // Reload every RAMBlock from its full baseline copy.
+    RAMBLOCK_FOREACH(block)
+    {
+        SyxSnapshotRAMBlock* snapshot_rb = g_hash_table_lookup(
+            snapshot->root_snapshot->rbs_snapshot,
+            GINT_TO_POINTER(block->idstr_hash));
+        if (snapshot_rb) {
+            uint64_t len = snapshot_rb->used_length;
+            if (len > block->used_length) {
+                len = block->used_length;
+            }
+            memcpy(block->host, snapshot_rb->ram, len);
+        }
+    }
+
+    // Drop any accumulated dirty-list entries so tracking (if ever enabled)
+    // restarts clean for the next cycle.
+    syx_snapshot_dirty_list_flush(snapshot);
+
+    if (must_unlock_bql) {
+        bql_unlock();
+    }
+}
+
 bool syx_snapshot_cow_cache_read_entry(BlockBackend* blk, int64_t offset,
                                        int64_t bytes, QEMUIOVector* qiov,
                                        size_t qiov_offset,
