@@ -165,3 +165,21 @@
 ##
 { 'command': 'hal-x86-inject-irq',
   'data': {'num-cpu': 'int', 'num-irq': 'int' } }
+
+##
+# @libafl-syx-snapshot:
+#
+# Create a fast whole-machine checkpoint (RAM + device state) using
+# libafl-qemu's syx-snapshot. One checkpoint is kept; a subsequent call
+# replaces it. Used by HALucinator's LibAflQemuBackend to drive a
+# snapshot/restore fuzzing loop over QMP. Take it with the guest stopped.
+##
+{ 'command': 'libafl-syx-snapshot' }
+
+##
+# @libafl-syx-restore:
+#
+# Restore the machine to the last libafl-syx-snapshot (full RAM + devices).
+# Errors if no snapshot has been taken.
+##
+{ 'command': 'libafl-syx-restore' }
