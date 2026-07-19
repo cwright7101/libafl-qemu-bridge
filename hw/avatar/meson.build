@@ -16,6 +16,7 @@ specific_ss.add(when: ['CONFIG_AVATAR', 'CONFIG_ARM_V7M'], if_true: files('inter
 # hal-shadow-irq is arch-agnostic (target-endian memory writes); build it
 # for every CONFIG_AVATAR target so qmp_hal_shadow_irq is always linked.
 specific_ss.add(when: 'CONFIG_AVATAR', if_true: files('hal_irq.c'))
+specific_ss.add(when: 'CONFIG_AVATAR', if_true: files('hal_cov.c'))
 
 specific_ss.add(when: ['CONFIG_AVATAR', 'TARGET_MIPS'], if_true: files(
   'configurable_machine.c',

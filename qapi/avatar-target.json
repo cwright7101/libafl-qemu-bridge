@@ -183,3 +183,33 @@
 # Errors if no snapshot has been taken.
 ##
 { 'command': 'libafl-syx-restore' }
+
+##
+# @libafl-cov-open:
+#
+# Enable libafl-qemu AFL-style edge coverage for an external (GDB+QMP) fuzzing
+# driver: register the block-coverage hook (which tb_flushes so existing blocks
+# re-translate instrumented) and zero the current + cumulative coverage maps.
+# Idempotent enable; always resets the maps.
+##
+{ 'command': 'libafl-cov-open' }
+
+##
+# @CovResult:
+#
+# @new-edges: number of newly-covered edges the last run hit.
+#
+# @total-edges: number of distinct edges covered cumulatively across all runs.
+##
+{ 'struct': 'CovResult',
+  'data': { 'new-edges': 'int', 'total-edges': 'int' } }
+
+##
+# @libafl-cov-result:
+#
+# Fold the current run's edge map into the cumulative seen-set, zero the current
+# map for the next run, and return the number of NEW edges the last run hit
+# (0 means the run added no coverage) plus the running total. Used by
+# LibAflQemuBackend to drive a coverage-guided fuzzing loop.
+##
+{ 'command': 'libafl-cov-result', 'returns': 'CovResult' }
